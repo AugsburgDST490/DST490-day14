@@ -10,7 +10,7 @@ server: shiny
 
 # Preliminaries
 
-Here is a mashup of code to produce the three digit zip code plots.
+Here is a mashup of code to produce an interactive plot of zip codes for Hennepin County.
 ```{r}
 #| context: setup
 #| echo: false
@@ -21,41 +21,21 @@ library(sf)     # R wrapper around GDAL/OGR
 library(leaflet)    # for fortifying shapefiles
 library(shiny)
 
-zips <- st_read(dsn = "Zip_Codes/", layer = "Zip_Codes")
+zips <- st_read(dsn = "Zip_Codes/", layer = "Zip_Codes",quiet = TRUE)
 
-
-# Create your own listing of zip codes
-unique_zips <- zips$NAME_TXT |> unique()
+municipal_boundary <- read_sf("Hennepin_County_Municipalities.geojson")
 
 # Define a function for the different colors in each zip
 zip_pal <-colorFactor(palette = "RdYlBu",
                       domain = zips$NAME_TXT
 )
 
-three_digit_zips <- tibble( zips_all = unique_zips,
-                            three_digit_zip = str_extract(unique_zips,pattern="^.{3}") )
 
-
-# now join
-zips2 <- zips |>
-  inner_join(three_digit_zips,by=c("NAME_TXT"="zips_all"))
-
-
-### now let's roll up!
-zips3 <- zips2 |>
-  st_make_valid() |>
-  group_by(three_digit_zip) |>
-  summarize()
-
-# Define a function for the different colors in each five digit zip
-zip_pal <-colorFactor(palette = "RdYlBu",
-                      domain = unique_zips
+# Define a function for the different colors in each zip
+municipal_pal <-colorFactor(palette = "RdYlBu",
+                      domain = municipal_boundary$NAME_TXT
 )
 
-# Define a function for the different colors in each three digit zip
-zip3_pal <-colorFactor(palette = "RdYlBu",
-                      domain = three_digit_zips$three_digit_zip
-)
 ```
 
 
@@ -67,7 +47,8 @@ zip3_pal <-colorFactor(palette = "RdYlBu",
 zips_reproj <- zips |>
   st_transform('+proj=longlat +datum=WGS84')
 
-zips3_reproj <- zips3 |>
+# Reproject the municipal data frame
+municipal_reproj <- municipal_boundary |>
   st_transform('+proj=longlat +datum=WGS84')
 
 # Create the map
@@ -80,17 +61,19 @@ map <- leaflet() |>
               fillOpacity = 0.3,
               popup = ~NAME_TXT,
               group = "Five digit zips") |>
-    addPolygons(data = zips3_reproj,
+  addPolygons(data = municipal_reproj,
                 weight = 1,
               color = "red",
-              fillColor = ~zip3_pal(three_digit_zip),
+              fillColor = ~municipal_pal(NAME_TXT),
               fillOpacity = 0.3,
-              popup = ~three_digit_zip,
-              group = "Three digit zips") |>
+              popup = ~NAME_TXT,
+              group = "Municipal Boundary") |>
   addLayersControl(
-    overlayGroups = c("Five digit zips", "Three digit zips"),
+    overlayGroups = c("Five digit zips", "Municipal Boundary"),
     options = layersControlOptions(collapsed = FALSE)
   )
+  
+
 
 
 output$plot <- renderLeaflet({
